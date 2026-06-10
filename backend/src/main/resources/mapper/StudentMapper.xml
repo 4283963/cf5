@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gym.heartrate.mapper.StudentMapper">
+
+    <resultMap id="StudentMap" type="com.gym.heartrate.entity.Student">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="gender" property="gender"/>
+        <result column="age" property="age"/>
+        <result column="weight" property="weight"/>
+        <result column="height" property="height"/>
+        <result column="bracelet_id" property="braceletId"/>
+        <result column="phone" property="phone"/>
+        <result column="membership_level" property="membershipLevel"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <select id="selectById" resultMap="StudentMap">
+        SELECT * FROM student WHERE id = #{id}
+    </select>
+
+    <select id="selectByBraceletId" resultMap="StudentMap">
+        SELECT * FROM student WHERE bracelet_id = #{braceletId}
+    </select>
+
+    <select id="selectAll" resultMap="StudentMap">
+        SELECT * FROM student ORDER BY id
+    </select>
+
+    <select id="selectByStatus" resultMap="StudentMap">
+        SELECT * FROM student WHERE status = #{status} ORDER BY id
+    </select>
+
+    <insert id="insert" parameterType="com.gym.heartrate.entity.Student" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO student (name, gender, age, weight, height, bracelet_id, phone, membership_level, status)
+        VALUES (#{name}, #{gender}, #{age}, #{weight}, #{height}, #{braceletId}, #{phone}, #{membershipLevel}, #{status})
+    </insert>
+
+    <update id="update" parameterType="com.gym.heartrate.entity.Student">
+        UPDATE student
+        SET name = #{name}, gender = #{gender}, age = #{age}, weight = #{weight},
+            height = #{height}, bracelet_id = #{braceletId}, phone = #{phone},
+            membership_level = #{membershipLevel}, status = #{status}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM student WHERE id = #{id}
+    </delete>
+</mapper>

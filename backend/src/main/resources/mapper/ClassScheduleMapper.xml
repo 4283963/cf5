@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gym.heartrate.mapper.ClassScheduleMapper">
+
+    <resultMap id="ClassScheduleMap" type="com.gym.heartrate.entity.ClassSchedule">
+        <id column="id" property="id"/>
+        <result column="class_name" property="className"/>
+        <result column="coach_name" property="coachName"/>
+        <result column="class_type" property="classType"/>
+        <result column="room_id" property="roomId"/>
+        <result column="start_time" property="startTime"/>
+        <result column="end_time" property="endTime"/>
+        <result column="capacity" property="capacity"/>
+        <result column="status" property="status"/>
+        <result column="description" property="description"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <select id="selectById" resultMap="ClassScheduleMap">
+        SELECT * FROM class_schedule WHERE id = #{id}
+    </select>
+
+    <select id="selectByRoomId" resultMap="ClassScheduleMap">
+        SELECT * FROM class_schedule WHERE room_id = #{roomId} ORDER BY start_time DESC
+    </select>
+
+    <select id="selectByStatus" resultMap="ClassScheduleMap">
+        SELECT * FROM class_schedule WHERE status = #{status} ORDER BY start_time
+    </select>
+
+    <select id="selectCurrentClass" resultMap="ClassScheduleMap">
+        SELECT * FROM class_schedule
+        WHERE room_id = #{roomId} AND status IN (1, 2)
+        AND NOW() BETWEEN DATE_SUB(start_time, INTERVAL 30 MINUTE) AND end_time
+        ORDER BY start_time LIMIT 1
+    </select>
+
+    <insert id="insert" parameterType="com.gym.heartrate.entity.ClassSchedule" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO class_schedule (class_name, coach_name, class_type, room_id, start_time, end_time, capacity, status, description)
+        VALUES (#{className}, #{coachName}, #{classType}, #{roomId}, #{startTime}, #{endTime}, #{capacity}, #{status}, #{description})
+    </insert>
+
+    <update id="update" parameterType="com.gym.heartrate.entity.ClassSchedule">
+        UPDATE class_schedule
+        SET class_name = #{className}, coach_name = #{coachName}, class_type = #{classType},
+            room_id = #{roomId}, start_time = #{startTime}, end_time = #{endTime},
+            capacity = #{capacity}, status = #{status}, description = #{description}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE class_schedule SET status = #{status} WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM class_schedule WHERE id = #{id}
+    </delete>
+</mapper>

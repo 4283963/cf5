@@ -1,35 +1,27 @@
-# Mac 系统垃圾文件
+# Backend
+backend/target/
+backend/.mvn/
+backend/mvnw
+backend/mvnw.cmd
+backend/*.iml
+backend/.idea/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS
 .DS_Store
-.AppleDouble
-.LSOverride
-.Icon
-._*
-
-# Windows 系统垃圾文件
 Thumbs.db
-desktop.ini
 
-# 日志与临时文件
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# Logs
 *.log
 logs/
-*.tmp
-*.bak
-
-# 开发工具缓存 (IDEA / VSCode)
-.idea/
-.vscode/
-*.suo
-*.user
-*.workspace
-.history/
-
-# 常见依赖与构建输出
-node_modules/
-dist/
-build/
-out/
-target/
-bin/
-obj/
-__pycache__/
-*.pyc

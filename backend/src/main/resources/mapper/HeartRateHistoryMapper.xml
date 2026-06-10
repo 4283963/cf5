@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gym.heartrate.mapper.HeartRateHistoryMapper">
+
+    <resultMap id="HeartRateHistoryMap" type="com.gym.heartrate.entity.HeartRateHistory">
+        <id column="id" property="id"/>
+        <result column="class_id" property="classId"/>
+        <result column="checkin_id" property="checkinId"/>
+        <result column="student_id" property="studentId"/>
+        <result column="bracelet_id" property="braceletId"/>
+        <result column="heart_rate" property="heartRate"/>
+        <result column="calories" property="calories"/>
+        <result column="intensity" property="intensity"/>
+        <result column="record_time" property="recordTime"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.gym.heartrate.entity.HeartRateHistory" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO heart_rate_history (class_id, checkin_id, student_id, bracelet_id, heart_rate, calories, intensity, record_time)
+        VALUES (#{classId}, #{checkinId}, #{studentId}, #{braceletId}, #{heartRate}, #{calories}, #{intensity}, #{recordTime})
+    </insert>
+
+    <insert id="batchInsert" parameterType="java.util.List">
+        INSERT INTO heart_rate_history (class_id, checkin_id, student_id, bracelet_id, heart_rate, calories, intensity, record_time)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.classId}, #{item.checkinId}, #{item.studentId}, #{item.braceletId}, #{item.heartRate}, #{item.calories}, #{item.intensity}, #{item.recordTime})
+        </foreach>
+    </insert>
+
+    <select id="selectByClassId" resultMap="HeartRateHistoryMap">
+        SELECT * FROM heart_rate_history WHERE class_id = #{classId} ORDER BY record_time
+    </select>
+
+    <select id="selectByStudentIdAndClassId" resultMap="HeartRateHistoryMap">
+        SELECT * FROM heart_rate_history WHERE student_id = #{studentId} AND class_id = #{classId} ORDER BY record_time
+    </select>
+
+    <select id="selectLatestByBraceletId" resultMap="HeartRateHistoryMap">
+        SELECT * FROM heart_rate_history WHERE bracelet_id = #{braceletId} ORDER BY record_time DESC LIMIT 1
+    </select>
+</mapper>

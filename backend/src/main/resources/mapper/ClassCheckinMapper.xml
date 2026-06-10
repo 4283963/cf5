@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gym.heartrate.mapper.ClassCheckinMapper">
+
+    <resultMap id="ClassCheckinMap" type="com.gym.heartrate.entity.ClassCheckin">
+        <id column="id" property="id"/>
+        <result column="class_id" property="classId"/>
+        <result column="student_id" property="studentId"/>
+        <result column="bracelet_id" property="braceletId"/>
+        <result column="checkin_time" property="checkinTime"/>
+        <result column="checkout_time" property="checkoutTime"/>
+        <result column="total_calories" property="totalCalories"/>
+        <result column="avg_heart_rate" property="avgHeartRate"/>
+        <result column="max_heart_rate" property="maxHeartRate"/>
+        <result column="duration" property="duration"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <select id="selectById" resultMap="ClassCheckinMap">
+        SELECT * FROM class_checkin WHERE id = #{id}
+    </select>
+
+    <select id="selectByClassAndStudent" resultMap="ClassCheckinMap">
+        SELECT * FROM class_checkin WHERE class_id = #{classId} AND student_id = #{studentId}
+    </select>
+
+    <select id="selectByBraceletAndStatus" resultMap="ClassCheckinMap">
+        SELECT * FROM class_checkin WHERE bracelet_id = #{braceletId} AND status = #{status} ORDER BY checkin_time DESC LIMIT 1
+    </select>
+
+    <select id="selectByClassId" resultMap="ClassCheckinMap">
+        SELECT * FROM class_checkin WHERE class_id = #{classId} ORDER BY checkin_time
+    </select>
+
+    <select id="selectByStudentId" resultMap="ClassCheckinMap">
+        SELECT * FROM class_checkin WHERE student_id = #{studentId} ORDER BY checkin_time DESC
+    </select>
+
+    <insert id="insert" parameterType="com.gym.heartrate.entity.ClassCheckin" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO class_checkin (class_id, student_id, bracelet_id, checkin_time, total_calories, avg_heart_rate, max_heart_rate, duration, status)
+        VALUES (#{classId}, #{studentId}, #{braceletId}, #{checkinTime}, #{totalCalories}, #{avgHeartRate}, #{maxHeartRate}, #{duration}, #{status})
+    </insert>
+
+    <update id="update" parameterType="com.gym.heartrate.entity.ClassCheckin">
+        UPDATE class_checkin
+        SET class_id = #{classId}, student_id = #{studentId}, bracelet_id = #{braceletId},
+            checkin_time = #{checkinTime}, checkout_time = #{checkoutTime}, total_calories = #{totalCalories},
+            avg_heart_rate = #{avgHeartRate}, max_heart_rate = #{maxHeartRate}, duration = #{duration}, status = #{status}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE class_checkin SET status = #{status} WHERE id = #{id}
+    </update>
+</mapper>
