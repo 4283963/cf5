@@ -15,4 +15,9 @@ public interface ClassCheckinMapper {
     int insert(ClassCheckin checkin);
     int update(ClassCheckin checkin);
     int updateStatus(@Param("id") Long id, @Param("status") Integer status);
+    int updateStats(@Param("id") Long id,
+                     @Param("maxHeartRate") Integer maxHeartRate,
+                     @Param("avgHeartRate") Integer avgHeartRate,
+                     @Param("totalCalories") java.math.BigDecimal totalCalories,
+                     @Param("duration") Integer duration);
 }

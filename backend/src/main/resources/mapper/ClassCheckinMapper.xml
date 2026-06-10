@@ -54,4 +54,14 @@
     <update id="updateStatus">
         UPDATE class_checkin SET status = #{status} WHERE id = #{id}
     </update>
+
+    <update id="updateStats">
+        UPDATE class_checkin
+        SET max_heart_rate = #{maxHeartRate},
+            avg_heart_rate = #{avgHeartRate},
+            total_calories = #{totalCalories},
+            duration = #{duration},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
 </mapper>

@@ -2,10 +2,39 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import SockJS from 'sockjs-client'
 import { Client } from '@stomp/stompjs'
 
+const MAX_FPS = 30
+const FRAME_INTERVAL = 1000 / MAX_FPS
+
 export const useHeartRateWebSocket = () => {
   const [heartRateData, setHeartRateData] = useState([])
   const [isConnected, setIsConnected] = useState(false)
   const clientRef = useRef(null)
+  const pendingDataRef = useRef(null)
+  const animationFrameRef = useRef(null)
+  const lastUpdateRef = useRef(0)
+
+  const scheduleUpdate = useCallback((data) => {
+    pendingDataRef.current = data
+
+    if (animationFrameRef.current) {
+      return
+    }
+
+    const update = () => {
+      animationFrameRef.current = null
+      const now = performance.now()
+
+      if (now - lastUpdateRef.current >= FRAME_INTERVAL && pendingDataRef.current) {
+        setHeartRateData(pendingDataRef.current)
+        pendingDataRef.current = null
+        lastUpdateRef.current = now
+      } else if (pendingDataRef.current) {
+        animationFrameRef.current = requestAnimationFrame(update)
+      }
+    }
+
+    animationFrameRef.current = requestAnimationFrame(update)
+  }, [])
 
   const connect = useCallback(() => {
     if (clientRef.current?.active) return
@@ -22,7 +51,7 @@ export const useHeartRateWebSocket = () => {
         client.subscribe('/topic/heartrate', (message) => {
           try {
             const data = JSON.parse(message.body)
-            setHeartRateData(data)
+            scheduleUpdate(data)
           } catch (e) {
             console.error('解析心率数据失败:', e)
           }
@@ -44,13 +73,18 @@ export const useHeartRateWebSocket = () => {
 
     clientRef.current = client
     client.activate()
-  }, [])
+  }, [scheduleUpdate])
 
   const disconnect = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
+    }
     if (clientRef.current) {
       clientRef.current.deactivate()
       clientRef.current = null
     }
+    pendingDataRef.current = null
     setIsConnected(false)
   }, [])
 

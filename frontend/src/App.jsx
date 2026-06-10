@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import Header from './components/Header'
 import HeartRateCard from './components/HeartRateCard'
 import Legend from './components/Legend'
 import { useHeartRateWebSocket } from './hooks/useHeartRateWebSocket'
 
 const TOTAL_STUDENTS = 20
+const EMPTY_TEMPLATE = Object.freeze({ heartRate: 0, intensity: 0 })
 
 function App() {
   const { heartRateData, isConnected } = useHeartRateWebSocket()
@@ -12,7 +13,7 @@ function App() {
   const [classInfo, setClassInfo] = useState(null)
   const [mockRunning, setMockRunning] = useState(false)
 
-  const fetchInitialData = async () => {
+  const fetchInitialData = useCallback(async () => {
     try {
       const [studentsRes, classRes, mockRes] = await Promise.all([
         fetch('/api/student/list').then(r => r.json()),
@@ -25,13 +26,13 @@ function App() {
     } catch (e) {
       console.error('获取初始数据失败:', e)
     }
-  }
+  }, [])
 
   useEffect(() => {
     fetchInitialData()
-  }, [])
+  }, [fetchInitialData])
 
-  const autoCheckin = async () => {
+  const autoCheckin = useCallback(async () => {
     if (!classInfo) {
       alert('没有进行中的课程，请先创建课程')
       return
@@ -48,9 +49,9 @@ function App() {
     } catch (e) {
       console.error('签到失败:', e)
     }
-  }
+  }, [classInfo, students])
 
-  const toggleMock = async () => {
+  const toggleMock = useCallback(async () => {
     try {
       const url = mockRunning ? '/api/mock/stop' : '/api/mock/start'
       const res = await fetch(url, { method: 'POST' }).then(r => r.json())
@@ -60,36 +61,76 @@ function App() {
     } catch (e) {
       console.error('切换模拟数据失败:', e)
     }
-  }
+  }, [mockRunning])
+
+  const heartRateMap = useMemo(() => {
+    const map = new Map()
+    for (const d of heartRateData) {
+      map.set(d.braceletId, d)
+    }
+    return map
+  }, [heartRateData])
 
   const mergedData = useMemo(() => {
-    const result = new Array(TOTAL_STUDENTS).fill(null)
-    const dataMap = new Map()
-    heartRateData.forEach(d => dataMap.set(d.braceletId, d))
-
-    students.forEach((stu, idx) => {
-      if (idx < TOTAL_STUDENTS) {
-        const rt = dataMap.get(stu.braceletId)
-        result[idx] = rt || { ...stu, heartRate: 0, intensity: 0 }
-      }
-    })
+    const result = new Array(TOTAL_STUDENTS)
 
     for (let i = 0; i < TOTAL_STUDENTS; i++) {
-      if (!result[i]) {
-        result[i] = { name: `学员${i + 1}`, braceletId: `EMPTY${i}`, heartRate: 0, intensity: 0 }
+      const stu = students[i]
+      if (stu) {
+        const rt = heartRateMap.get(stu.braceletId)
+        if (rt) {
+          result[i] = rt
+        } else {
+          result[i] = { ...stu, ...EMPTY_TEMPLATE }
+        }
+      } else {
+        result[i] = {
+          name: `学员${i + 1}`,
+          braceletId: `EMPTY${i}`,
+          ...EMPTY_TEMPLATE
+        }
       }
     }
     return result
-  }, [students, heartRateData])
+  }, [students, heartRateMap])
 
   const stats = useMemo(() => {
-    const active = heartRateData.filter(d => d.heartRate > 0)
-    const totalCal = active.reduce((sum, d) => sum + (Number(d.totalCalories) || 0), 0)
-    const avgHr = active.length > 0
-      ? Math.round(active.reduce((sum, d) => sum + (d.avgHeartRate || d.heartRate || 0), 0) / active.length)
-      : 0
-    return { connected: active.length, totalCalories: totalCal, avgHeartRate: avgHr }
+    let count = 0
+    let totalCal = 0
+    let hrSum = 0
+
+    for (const d of heartRateData) {
+      if (d.heartRate > 0) {
+        count++
+        totalCal += Number(d.totalCalories) || 0
+        hrSum += d.avgHeartRate || d.heartRate || 0
+      }
+    }
+
+    return {
+      connected: count,
+      totalCalories: totalCal,
+      avgHeartRate: count > 0 ? Math.round(hrSum / count) : 0
+    }
   }, [heartRateData])
+
+  const intensityStats = useMemo(() => {
+    let low = 0, fatburn = 0, extreme = 0
+    for (const d of heartRateData) {
+      if (d.heartRate > 0) {
+        if (d.intensity === 1) low++
+        else if (d.intensity === 2) fatburn++
+        else if (d.intensity === 3) extreme++
+      }
+    }
+    return { low, fatburn, extreme }
+  }, [heartRateData])
+
+  const intensityBars = useMemo(() => [
+    { label: '低强度', count: intensityStats.low, color: 'from-blue-500 to-blue-600', textColor: 'text-blue-400' },
+    { label: '燃脂区', count: intensityStats.fatburn, color: 'from-emerald-500 to-green-600', textColor: 'text-emerald-400' },
+    { label: '极限区', count: intensityStats.extreme, color: 'from-red-500 to-red-600', textColor: 'text-red-400' },
+  ], [intensityStats])
 
   return (
     <div className="min-h-screen bg-gym-dark">
@@ -129,7 +170,7 @@ function App() {
         <div className="grid grid-cols-4 gap-5 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5">
           {mergedData.map((student, index) => (
             <HeartRateCard
-              key={student?.braceletId || `empty-${index}`}
+              key={student.braceletId}
               student={student}
               index={index}
             />
@@ -144,19 +185,15 @@ function App() {
             <span className="text-xs text-gray-400">实时数据</span>
           </div>
           <div className="grid grid-cols-3 gap-6">
-            {[
-              { label: '低强度', count: heartRateData.filter(d => d.intensity === 1).length, color: 'from-blue-500 to-blue-600', textColor: 'text-blue-400' },
-              { label: '燃脂区', count: heartRateData.filter(d => d.intensity === 2).length, color: 'from-emerald-500 to-green-600', textColor: 'text-emerald-400' },
-              { label: '极限区', count: heartRateData.filter(d => d.intensity === 3).length, color: 'from-red-500 to-red-600', textColor: 'text-red-400' },
-            ].map((item, idx) => (
-              <div key={idx} className="relative">
+            {intensityBars.map((item, idx) => (
+              <div key={item.label} className="relative">
                 <div className="flex items-center justify-between mb-2">
                   <span className={`text-sm font-bold ${item.textColor}`}>{item.label}</span>
                   <span className="text-xl font-black text-white">{item.count} <span className="text-xs text-gray-500 font-normal">人</span></span>
                 </div>
                 <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
                   <div
-                    className={`h-full bg-gradient-to-r ${item.color} rounded-full transition-all duration-700`}
+                    className={`h-full bg-gradient-to-r ${item.color} rounded-full transition-all duration-500`}
                     style={{ width: `${stats.connected > 0 ? (item.count / stats.connected * 100) : 0}%` }}
                   ></div>
                 </div>

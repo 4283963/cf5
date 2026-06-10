@@ -18,6 +18,7 @@ body {
 
 .heart-pulse {
   animation: heartBeat 1s ease-in-out infinite;
+  transform: translateZ(0);
 }
 
 @keyframes heartBeat {
@@ -27,31 +28,65 @@ body {
   75% { transform: scale(1.05); }
 }
 
+.intensity-low,
+.intensity-fatburn,
+.intensity-extreme,
+.idle-card {
+  position: relative;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+.intensity-low::after,
+.intensity-fatburn::after,
+.intensity-extreme::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 16px;
+  opacity: 0.6;
+  z-index: -1;
+  transform: translateZ(0);
+  pointer-events: none;
+}
+
 .intensity-low {
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 100%);
   border: 2px solid rgba(59, 130, 246, 0.6);
-  box-shadow: 0 0 30px rgba(59, 130, 246, 0.3), inset 0 0 20px rgba(59, 130, 246, 0.1);
+}
+
+.intensity-low::after {
+  background: radial-gradient(ellipse at center, rgba(59, 130, 246, 0.3) 0%, transparent 70%);
 }
 
 .intensity-fatburn {
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.05) 100%);
   border: 2px solid rgba(16, 185, 129, 0.6);
-  box-shadow: 0 0 30px rgba(16, 185, 129, 0.3), inset 0 0 20px rgba(16, 185, 129, 0.1);
+}
+
+.intensity-fatburn::after {
+  background: radial-gradient(ellipse at center, rgba(16, 185, 129, 0.3) 0%, transparent 70%);
 }
 
 .intensity-extreme {
   background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(239, 68, 68, 0.05) 100%);
   border: 2px solid rgba(239, 68, 68, 0.6);
-  box-shadow: 0 0 30px rgba(239, 68, 68, 0.4), inset 0 0 20px rgba(239, 68, 68, 0.15);
-  animation: extremePulse 1.5s ease-in-out infinite;
 }
 
-@keyframes extremePulse {
+.intensity-extreme::after {
+  background: radial-gradient(ellipse at center, rgba(239, 68, 68, 0.4) 0%, transparent 70%);
+  animation: extremeGlow 1.5s ease-in-out infinite;
+}
+
+@keyframes extremeGlow {
   0%, 100% {
-    box-shadow: 0 0 30px rgba(239, 68, 68, 0.4), inset 0 0 20px rgba(239, 68, 68, 0.15);
+    opacity: 0.4;
+    transform: scale(1) translateZ(0);
   }
   50% {
-    box-shadow: 0 0 50px rgba(239, 68, 68, 0.6), inset 0 0 30px rgba(239, 68, 68, 0.25);
+    opacity: 0.7;
+    transform: scale(1.05) translateZ(0);
   }
 }
 
