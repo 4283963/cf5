@@ -2,7 +2,6 @@ package com.gym.heartrate.dto;
 
 import lombok.Data;
 import java.math.BigDecimal;
-import java.util.List;
 
 @Data
 public class StudentHeartRateVO {
@@ -16,4 +15,8 @@ public class StudentHeartRateVO {
     private Integer maxHeartRate;
     private String membershipLevel;
     private Integer duration;
+    private String team;
+    private Boolean dangerWarning;
+    private Integer dangerSeconds;
+    private Integer maxHeartRateLimit;
 }

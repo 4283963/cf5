@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import Header from './components/Header'
 import HeartRateCard from './components/HeartRateCard'
 import Legend from './components/Legend'
+import TeamPKBar from './components/TeamPKBar'
 import { useHeartRateWebSocket } from './hooks/useHeartRateWebSocket'
 
 const TOTAL_STUDENTS = 20
@@ -12,17 +13,20 @@ function App() {
   const [students, setStudents] = useState([])
   const [classInfo, setClassInfo] = useState(null)
   const [mockRunning, setMockRunning] = useState(false)
+  const [teamAssignment, setTeamAssignment] = useState({})
 
   const fetchInitialData = useCallback(async () => {
     try {
-      const [studentsRes, classRes, mockRes] = await Promise.all([
+      const [studentsRes, classRes, mockRes, teamRes] = await Promise.all([
         fetch('/api/student/list').then(r => r.json()),
         fetch('/api/class/current?roomId=ROOM-A01').then(r => r.json()),
-        fetch('/api/mock/status').then(r => r.json())
+        fetch('/api/mock/status').then(r => r.json()),
+        fetch('/api/heartrate/team-stats').then(r => r.json())
       ])
       if (studentsRes.code === 200) setStudents(studentsRes.data || [])
       if (classRes.code === 200) setClassInfo(classRes.data)
       if (mockRes.code === 200) setMockRunning(mockRes.data?.running || false)
+      if (teamRes.code === 200) setTeamAssignment(teamRes.data?.teamAssignment || {})
     } catch (e) {
       console.error('获取初始数据失败:', e)
     }
@@ -63,6 +67,18 @@ function App() {
     }
   }, [mockRunning])
 
+  const resetTeams = useCallback(async () => {
+    if (!confirm('确定要重新随机分组吗？将重置所有爆卡警告。')) return
+    try {
+      const res = await fetch('/api/heartrate/reset-teams', { method: 'POST' }).then(r => r.json())
+      if (res.code === 200) {
+        fetchInitialData()
+      }
+    } catch (e) {
+      console.error('重置分组失败:', e)
+    }
+  }, [fetchInitialData])
+
   const heartRateMap = useMemo(() => {
     const map = new Map()
     for (const d of heartRateData) {
@@ -70,6 +86,16 @@ function App() {
     }
     return map
   }, [heartRateData])
+
+  const getTeamForStudent = useCallback((braceletId, index) => {
+    if (heartRateMap.get(braceletId)?.team) {
+      return heartRateMap.get(braceletId).team
+    }
+    if (teamAssignment[braceletId]) {
+      return teamAssignment[braceletId]
+    }
+    return index % 2 === 0 ? 'RED' : 'BLUE'
+  }, [heartRateMap, teamAssignment])
 
   const mergedData = useMemo(() => {
     const result = new Array(TOTAL_STUDENTS)
@@ -81,18 +107,51 @@ function App() {
         if (rt) {
           result[i] = rt
         } else {
-          result[i] = { ...stu, ...EMPTY_TEMPLATE }
+          result[i] = {
+            ...stu,
+            ...EMPTY_TEMPLATE,
+            team: getTeamForStudent(stu.braceletId, i),
+            dangerWarning: false,
+            dangerSeconds: 0
+          }
         }
       } else {
         result[i] = {
           name: `学员${i + 1}`,
           braceletId: `EMPTY${i}`,
-          ...EMPTY_TEMPLATE
+          ...EMPTY_TEMPLATE,
+          team: i % 2 === 0 ? 'RED' : 'BLUE',
+          dangerWarning: false,
+          dangerSeconds: 0
         }
       }
     }
     return result
-  }, [students, heartRateMap])
+  }, [students, heartRateMap, getTeamForStudent])
+
+  const teamStats = useMemo(() => {
+    let redCal = 0, blueCal = 0, redCnt = 0, blueCnt = 0, redDanger = 0, blueDanger = 0
+    for (const d of heartRateData) {
+      const cal = Number(d.totalCalories) || 0
+      if (d.team === 'RED' || (!d.team && heartRateMap.get(d.braceletId)?.team === 'RED')) {
+        redCal += cal
+        redCnt++
+        if (d.dangerWarning) redDanger++
+      } else {
+        blueCal += cal
+        blueCnt++
+        if (d.dangerWarning) blueDanger++
+      }
+    }
+    return {
+      redCalories: redCal,
+      blueCalories: blueCal,
+      redCount: redCnt,
+      blueCount: blueCnt,
+      redDanger,
+      blueDanger
+    }
+  }, [heartRateData, heartRateMap])
 
   const stats = useMemo(() => {
     let count = 0
@@ -132,6 +191,10 @@ function App() {
     { label: '极限区', count: intensityStats.extreme, color: 'from-red-500 to-red-600', textColor: 'text-red-400' },
   ], [intensityStats])
 
+  const dangerCount = useMemo(() => {
+    return heartRateData.filter(d => d.dangerWarning).length
+  }, [heartRateData])
+
   return (
     <div className="min-h-screen bg-gym-dark">
       <Header
@@ -141,13 +204,40 @@ function App() {
         avgHeartRate={stats.avgHeartRate}
       />
 
-      <div className="px-8 py-4 border-b border-gray-700/30 flex items-center justify-between bg-gym-darker/50">
+      {dangerCount > 0 && (
+        <div className="bg-gradient-to-r from-red-900/90 via-red-700/90 to-red-900/90 px-8 py-3 flex items-center justify-center gap-4 border-y-2 border-yellow-400">
+          <span className="text-4xl animate-bounce">🚨</span>
+          <span className="text-yellow-300 font-black text-2xl animate-pulse">
+            ⚠️ 爆卡警告：{dangerCount} 名学员心率超过极限，请教练立即关注！
+          </span>
+          <span className="text-4xl animate-bounce">🚨</span>
+        </div>
+      )}
+
+      <div className="px-8 py-4 bg-gym-darker/50">
+        <TeamPKBar
+          redCalories={teamStats.redCalories}
+          blueCalories={teamStats.blueCalories}
+          redCount={teamStats.redCount}
+          blueCount={teamStats.blueCount}
+          redDanger={teamStats.redDanger}
+          blueDanger={teamStats.blueDanger}
+        />
+      </div>
+
+      <div className="px-8 py-3 border-b border-gray-700/30 flex items-center justify-between bg-gym-darker/30">
         <Legend />
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold ${isConnected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
             <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`}></span>
             {isConnected ? '实时连接中' : '连接断开'}
           </div>
+          <button
+            onClick={resetTeams}
+            className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-bold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-purple-500/30"
+          >
+            🎲 重新分组
+          </button>
           <button
             onClick={autoCheckin}
             className="px-5 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-sm font-bold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-blue-500/30"
@@ -185,7 +275,7 @@ function App() {
             <span className="text-xs text-gray-400">实时数据</span>
           </div>
           <div className="grid grid-cols-3 gap-6">
-            {intensityBars.map((item, idx) => (
+            {intensityBars.map((item) => (
               <div key={item.label} className="relative">
                 <div className="flex items-center justify-between mb-2">
                   <span className={`text-sm font-bold ${item.textColor}`}>{item.label}</span>

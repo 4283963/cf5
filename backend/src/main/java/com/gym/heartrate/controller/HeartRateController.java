@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/heartrate")
@@ -34,5 +35,16 @@ public class HeartRateController {
     @GetMapping("/realtime")
     public Result<List<StudentHeartRateVO>> getRealtimeData() {
         return Result.success(heartRateService.getCurrentRealtimeData());
+    }
+
+    @GetMapping("/team-stats")
+    public Result<Map<String, Object>> getTeamStats() {
+        return Result.success(heartRateService.getTeamStats());
+    }
+
+    @PostMapping("/reset-teams")
+    public Result<Void> resetTeams() {
+        heartRateService.resetTeamAssignment();
+        return Result.success();
     }
 }

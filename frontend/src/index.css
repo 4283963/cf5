@@ -94,3 +94,69 @@ body {
   background: linear-gradient(135deg, rgba(75, 85, 99, 0.15) 0%, rgba(75, 85, 99, 0.05) 100%);
   border: 2px dashed rgba(75, 85, 99, 0.4);
 }
+
+.danger-card {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.35) 0%, rgba(185, 28, 28, 0.15) 100%);
+  border: 3px solid #fbbf24;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+  animation: dangerBorderPulse 0.4s ease-in-out infinite;
+}
+
+.danger-card::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 18px;
+  background: linear-gradient(45deg, #ef4444, #fbbf24, #ef4444, #fbbf24);
+  background-size: 400% 400%;
+  z-index: -2;
+  opacity: 0.6;
+  animation: dangerGradient 2s ease infinite;
+  filter: blur(8px);
+}
+
+.danger-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  animation: dangerFlash 0.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.danger-badge {
+  animation: dangerBadgeShake 0.3s ease-in-out infinite;
+}
+
+@keyframes dangerBorderPulse {
+  0%, 100% {
+    border-color: #fbbf24;
+    box-shadow: 0 0 25px rgba(251, 191, 36, 0.5), inset 0 0 20px rgba(239, 68, 68, 0.3);
+  }
+  50% {
+    border-color: #ef4444;
+    box-shadow: 0 0 45px rgba(239, 68, 68, 0.7), inset 0 0 30px rgba(239, 68, 68, 0.5);
+  }
+}
+
+@keyframes dangerGradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes dangerFlash {
+  0%, 100% {
+    background: rgba(239, 68, 68, 0);
+  }
+  50% {
+    background: rgba(239, 68, 68, 0.25);
+  }
+}
+
+@keyframes dangerBadgeShake {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  25% { transform: translateX(-2px) rotate(-3deg); }
+  75% { transform: translateX(2px) rotate(3deg); }
+}

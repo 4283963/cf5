@@ -19,11 +19,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Service
@@ -39,6 +38,10 @@ public class HeartRateService {
     private final Map<String, Student> studentCache = new ConcurrentHashMap<>();
     private final Map<String, ClassCheckin> checkinCache = new ConcurrentHashMap<>();
     private final Map<String, CheckinStats> checkinStatsCache = new ConcurrentHashMap<>();
+    private final Map<String, DangerState> dangerStateMap = new ConcurrentHashMap<>();
+
+    private final Map<String, String> teamAssignment = new ConcurrentHashMap<>();
+    private final AtomicInteger teamAssignCounter = new AtomicInteger(0);
 
     private final BlockingQueue<HeartRateHistory> historyWriteQueue = new LinkedBlockingQueue<>(100000);
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -51,6 +54,8 @@ public class HeartRateService {
     private static final long WS_PUSH_INTERVAL_MS = 200;
     private static final long STATS_UPDATE_INTERVAL_MS = 5000;
     private static final long CACHE_REFRESH_INTERVAL_MS = 30000;
+    private static final int DANGER_THRESHOLD_SECONDS = 30;
+    private static final double DANGER_HEART_RATE_RATIO = 0.90;
 
     private static class CheckinStats {
         int heartRateSum;
@@ -59,6 +64,13 @@ public class HeartRateService {
         BigDecimal totalCalories;
         LocalDateTime checkinTime;
         volatile boolean dirty;
+    }
+
+    private static class DangerState {
+        int overLimitCount;
+        int totalSeconds;
+        LocalDateTime firstOverTime;
+        volatile boolean triggered;
     }
 
     @PostConstruct
@@ -76,6 +88,7 @@ public class HeartRateService {
             });
 
             refreshCache();
+            initTeamAssignment();
             scheduler.scheduleAtFixedRate(this::refreshCache, CACHE_REFRESH_INTERVAL_MS, CACHE_REFRESH_INTERVAL_MS, TimeUnit.MILLISECONDS);
             scheduler.scheduleAtFixedRate(this::flushDatabase, DB_FLUSH_INTERVAL_MS, DB_FLUSH_INTERVAL_MS, TimeUnit.MILLISECONDS);
             scheduler.scheduleAtFixedRate(this::broadcastRealtimeData, WS_PUSH_INTERVAL_MS, WS_PUSH_INTERVAL_MS, TimeUnit.MILLISECONDS);
@@ -83,8 +96,8 @@ public class HeartRateService {
 
             writerExecutor.submit(this::backgroundDbWriter);
 
-            log.info("心率处理服务已启动, 批量大小={}, DB刷新间隔={}ms, WS推送间隔={}ms",
-                    DB_BATCH_SIZE, DB_FLUSH_INTERVAL_MS, WS_PUSH_INTERVAL_MS);
+            log.info("心率处理服务已启动, 批量大小={}, DB刷新间隔={}ms, WS推送间隔={}ms, 爆卡阈值={}s",
+                    DB_BATCH_SIZE, DB_FLUSH_INTERVAL_MS, WS_PUSH_INTERVAL_MS, DANGER_THRESHOLD_SECONDS);
         }
     }
 
@@ -100,11 +113,41 @@ public class HeartRateService {
         }
     }
 
+    private void initTeamAssignment() {
+        try {
+            List<Student> students = studentMapper.selectAll();
+            int idx = 0;
+            for (Student s : students) {
+                String team = (idx % 2 == 0) ? "RED" : "BLUE";
+                teamAssignment.put(s.getBraceletId(), team);
+                idx++;
+            }
+            log.info("红蓝队分组完成, 共 {} 人, 红队 {} 人, 蓝队 {} 人",
+                    students.size(),
+                    teamAssignment.values().stream().filter("RED"::equals).count(),
+                    teamAssignment.values().stream().filter("BLUE"::equals).count());
+        } catch (Exception e) {
+            log.warn("初始化分组失败", e);
+        }
+    }
+
+    private String getOrAssignTeam(String braceletId) {
+        String team = teamAssignment.get(braceletId);
+        if (team == null) {
+            team = (teamAssignCounter.getAndIncrement() % 2 == 0) ? "RED" : "BLUE";
+            teamAssignment.put(braceletId, team);
+        }
+        return team;
+    }
+
     private void refreshCache() {
         try {
             List<Student> students = studentMapper.selectAll();
             for (Student s : students) {
                 studentCache.put(s.getBraceletId(), s);
+                if (!teamAssignment.containsKey(s.getBraceletId())) {
+                    getOrAssignTeam(s.getBraceletId());
+                }
             }
             log.debug("学员缓存已刷新, 共 {} 人", students.size());
         } catch (Exception e) {
@@ -112,8 +155,12 @@ public class HeartRateService {
         }
     }
 
+    public static int calculateMaxHeartRate(int age) {
+        return 220 - age;
+    }
+
     public static int calculateIntensity(int heartRate, int age) {
-        int maxHeartRate = 220 - age;
+        int maxHeartRate = calculateMaxHeartRate(age);
         double ratio = (double) heartRate / maxHeartRate;
         if (ratio < 0.6) {
             return 1;
@@ -188,7 +235,48 @@ public class HeartRateService {
         }
 
         updateCheckinStatsCache(checkin, dto.getHeartRate(), intervalCalories);
-        updateRealtimeData(student, checkin, dto.getHeartRate(), intensity, intervalCalories);
+        DangerState dangerState = updateDangerState(dto.getBraceletId(), dto.getHeartRate(), student.getAge());
+        updateRealtimeData(student, checkin, dto.getHeartRate(), intensity, intervalCalories, dangerState);
+    }
+
+    private DangerState updateDangerState(String braceletId, int heartRate, int age) {
+        int maxHr = calculateMaxHeartRate(age);
+        int dangerLimit = (int) (maxHr * DANGER_HEART_RATE_RATIO);
+        boolean isOverLimit = heartRate >= dangerLimit;
+
+        DangerState state = dangerStateMap.get(braceletId);
+        if (state == null) {
+            state = new DangerState();
+            state.overLimitCount = 0;
+            state.totalSeconds = 0;
+            state.firstOverTime = null;
+            state.triggered = false;
+            dangerStateMap.put(braceletId, state);
+        }
+
+        synchronized (state) {
+            if (isOverLimit) {
+                state.overLimitCount++;
+                if (state.firstOverTime == null) {
+                    state.firstOverTime = LocalDateTime.now();
+                }
+                long seconds = ChronoUnit.SECONDS.between(state.firstOverTime, LocalDateTime.now());
+                state.totalSeconds = (int) seconds;
+                if (seconds >= DANGER_THRESHOLD_SECONDS) {
+                    if (!state.triggered) {
+                        log.warn("⚠️ 爆卡警告触发! braceletId={}, 心率={}, 持续={}s, 极限={}",
+                                braceletId, heartRate, seconds, dangerLimit);
+                    }
+                    state.triggered = true;
+                }
+            } else {
+                state.overLimitCount = 0;
+                state.totalSeconds = 0;
+                state.firstOverTime = null;
+                state.triggered = false;
+            }
+        }
+        return state;
     }
 
     private void updateCheckinStatsCache(ClassCheckin checkin, int heartRate, BigDecimal intervalCalories) {
@@ -214,7 +302,8 @@ public class HeartRateService {
         }
     }
 
-    private void updateRealtimeData(Student student, ClassCheckin checkin, int heartRate, int intensity, BigDecimal intervalCalories) {
+    private void updateRealtimeData(Student student, ClassCheckin checkin, int heartRate, int intensity,
+                                     BigDecimal intervalCalories, DangerState dangerState) {
         StudentHeartRateVO vo = realtimeDataMap.get(student.getBraceletId());
         if (vo == null) {
             vo = new StudentHeartRateVO();
@@ -226,10 +315,16 @@ public class HeartRateService {
             vo.setMaxHeartRate(0);
             vo.setTotalCalories(BigDecimal.ZERO);
             vo.setDuration(0);
+            vo.setTeam(getOrAssignTeam(student.getBraceletId()));
+            vo.setDangerWarning(false);
+            vo.setDangerSeconds(0);
+            vo.setMaxHeartRateLimit(calculateMaxHeartRate(student.getAge()));
             realtimeDataMap.put(student.getBraceletId(), vo);
         }
         vo.setHeartRate(heartRate);
         vo.setIntensity(intensity);
+        vo.setDangerWarning(dangerState.triggered);
+        vo.setDangerSeconds(dangerState.totalSeconds);
 
         String statsKey = checkin.getId().toString();
         CheckinStats stats = checkinStatsCache.get(statsKey);
@@ -356,9 +451,42 @@ public class HeartRateService {
         return List.copyOf(realtimeDataMap.values());
     }
 
+    public Map<String, Object> getTeamStats() {
+        BigDecimal redCalories = BigDecimal.ZERO;
+        BigDecimal blueCalories = BigDecimal.ZERO;
+        int redCount = 0;
+        int blueCount = 0;
+        int redDanger = 0;
+        int blueDanger = 0;
+
+        for (StudentHeartRateVO vo : realtimeDataMap.values()) {
+            BigDecimal cal = vo.getTotalCalories() != null ? vo.getTotalCalories() : BigDecimal.ZERO;
+            if ("RED".equals(vo.getTeam())) {
+                redCalories = redCalories.add(cal);
+                redCount++;
+                if (Boolean.TRUE.equals(vo.getDangerWarning())) redDanger++;
+            } else if ("BLUE".equals(vo.getTeam())) {
+                blueCalories = blueCalories.add(cal);
+                blueCount++;
+                if (Boolean.TRUE.equals(vo.getDangerWarning())) blueDanger++;
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("redCalories", redCalories);
+        result.put("blueCalories", blueCalories);
+        result.put("redCount", redCount);
+        result.put("blueCount", blueCount);
+        result.put("redDanger", redDanger);
+        result.put("blueDanger", blueDanger);
+        result.put("teamAssignment", new HashMap<>(teamAssignment));
+        return result;
+    }
+
     public void clearRealtimeData(String braceletId) {
         realtimeDataMap.remove(braceletId);
         checkinCache.keySet().removeIf(k -> k.startsWith(braceletId + "_"));
+        dangerStateMap.remove(braceletId);
     }
 
     public void clearAllRealtimeData() {
@@ -366,6 +494,31 @@ public class HeartRateService {
         checkinCache.clear();
         checkinStatsCache.clear();
         historyWriteQueue.clear();
+        dangerStateMap.clear();
+    }
+
+    public void resetTeamAssignment() {
+        teamAssignment.clear();
+        teamAssignCounter.set(0);
+        dangerStateMap.clear();
+        List<Student> students = studentMapper.selectAll();
+        List<String> braceletIds = new ArrayList<>();
+        for (Student s : students) {
+            braceletIds.add(s.getBraceletId());
+        }
+        Collections.shuffle(braceletIds);
+        int idx = 0;
+        for (String bid : braceletIds) {
+            String team = (idx % 2 == 0) ? "RED" : "BLUE";
+            teamAssignment.put(bid, team);
+            idx++;
+        }
+        for (StudentHeartRateVO vo : realtimeDataMap.values()) {
+            vo.setTeam(getOrAssignTeam(vo.getBraceletId()));
+            vo.setDangerWarning(false);
+            vo.setDangerSeconds(0);
+        }
+        log.info("红蓝队分组已重置");
     }
 
     public int getQueueSize() {
